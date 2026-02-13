@@ -4,6 +4,9 @@ const jwt = require("jsonwebtoken");
 
 async function registerUser(req, res) {
   try {
+    console.log('📝 Registration request received');
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+    
     const startTime = Date.now();
     const { Fullname, Email, Password } = req.body;
 
@@ -63,7 +66,9 @@ async function registerUser(req, res) {
         token
       });
   } catch (error) {
-    console.error('Registration error:', error);
+    console.error('❌ Registration error:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('Error details:', JSON.stringify(error, null, 2));
     res.status(500).json({ 
       message: 'Error creating user account',
       error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
