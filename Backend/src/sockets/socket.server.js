@@ -6,16 +6,25 @@ const { creatememory, querymemory } = require("./services/vector.service");
 function initSocketServer(httpServer) {
   const io = new Server(httpServer, {
     cors: {
-      origin: ["http://localhost:5173", "http://localhost:5174"],
+      origin: [
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:3000",
+        "https://nova-frontend-x3w-onrender.com",
+        "https://nova-frontend-x3wr.onrender.com",
+        process.env.FRONTEND_URL
+      ].filter(Boolean),
       methods: ["GET", "POST"],
-      credentials: true
+      credentials: true,
+      allowedHeaders: ["Content-Type", "Authorization", "Cookie"]
     },
-    transports: ["polling"],
+    transports: ["polling", "websocket"],
     pingInterval: 25000,
-    pingTimeout: 60000
+    pingTimeout: 60000,
+    allowEIO3: true
   });
 
-  console.log("✅ Socket.IO initialized (polling only)");
+  console.log("✅ Socket.IO initialized (polling + websocket)");
 
   io.on("connection", (socket) => {
     console.log("🎉 CLIENT CONNECTED - Socket ID:", socket.id);
