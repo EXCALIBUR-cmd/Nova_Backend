@@ -1,6 +1,7 @@
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
+const mongoose = require('mongoose');
 
 const routes = require('./routes/auth.routes');
 const chatsRoutes = require('./routes/chats.routes');
@@ -57,8 +58,28 @@ app.get('/', (req, res) => {
 });
 
 // Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Backend is running' });
+app.get('/health', async (req, res) => {
+  try {
+    const dbStatus = mongoose.connection.readyState;
+    const dbConnected = dbStatus === 1; // 1 = connected
+    
+    const health = {
+      status: dbConnected ? 'healthy' : 'degraded',
+      backend: 'running',
+      database: dbConnected ? 'connected' : 'disconnected',
+      dbReadyState: dbStatus, // 0=disconnected, 1=connected, 2=connecting, 3=disconnecting
+      timestamp: new Date().toISOString()
+    };
+    
+    const statusCode = dbConnected ? 200 : 503;
+    res.status(statusCode).json(health);
+  } catch (err) {
+    res.status(503).json({
+      status: 'unhealthy',
+      error: err.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Socket.IO check endpoint
