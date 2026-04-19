@@ -24,8 +24,20 @@ async function registerUser(req, res) {
 
     // Check if user exists
     const checkStart = Date.now();
-    const isUserAlreadyExists = await userModel.findOne({ Email });
-    console.log(`[PERF] User check took: ${Date.now() - checkStart}ms`);
+    let isUserAlreadyExists;
+    try {
+      isUserAlreadyExists = await userModel.findOne({ Email });
+      console.log(`[PERF] User check took: ${Date.now() - checkStart}ms`);
+    } catch (dbError) {
+      console.error('❌ Database error checking user:', dbError.message);
+      if (dbError.message.includes('buffering timed out') || dbError.message.includes('ENOTFOUND')) {
+        return res.status(503).json({ 
+          message: 'Database service temporarily unavailable. Please try again in a moment.',
+          error: 'Database connection error'
+        });
+      }
+      throw dbError;
+    }
     
     if (isUserAlreadyExists) {
       return res.status(400).json({ message: "User already exists" });
@@ -78,51 +90,75 @@ async function registerUser(req, res) {
 
 async function loginUser(req, res) {
   try {
-    console.log('Login request received');
+    console.log('📝 Login request received');
     console.log('Request body:', req.body);
     
     const { Email, Password } = req.body;
     
     if (!Email || !Password) {
-      console.log('Missing Email or Password');
+      console.log('⚠️ Missing Email or Password');
       return res.status(400).json({ message: 'Email and Password are required' });
     }
     
-    const user = await userModel.findOne({ Email });
-    console.log('User found:', user ? user.Email : 'null');
-    
-    if (!user) {
-      return res.status(400).json({ message: 'Invalid email or password' });
-    }
-    
-    const isPasswordValid = await bcrypt.compare(Password, user.Password);
-    console.log('Password valid:', isPasswordValid);
-    
-    if (!isPasswordValid) {
-      return res.status(400).json({ message: 'Invalid email or password' });
-    }
-    
-    if (!process.env.JWT_SECRET) {
-      console.error('JWT_SECRET is not defined in environment variables');
-      return res.status(500).json({ message: 'Server configuration error' });
-    }
-    
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
-    res.cookie("token", token, {
-      httpOnly: false,
-      sameSite: 'lax',
-      maxAge: 24 * 60 * 60 * 1000
-    });
-    
-    res
-      .status(200)
-      .json({
-        message: "Login successful",
-        user: { id: user._id, Email: user.Email, FullName: user.FullName },
-        token
+    // Verify database connection before query
+    const dbConnectStart = Date.now();
+    try {
+      const user = await userModel.findOne({ Email });
+      console.log(`[PERF] User lookup took: ${Date.now() - dbConnectStart}ms`);
+      console.log('User found:', user ? user.Email : 'null');
+      
+      if (!user) {
+        return res.status(400).json({ message: 'Invalid email or password' });
+      }
+      
+      const isPasswordValid = await bcrypt.compare(Password, user.Password);
+      console.log('Password valid:', isPasswordValid);
+      
+      if (!isPasswordValid) {
+        return res.status(400).json({ message: 'Invalid email or password' });
+      }
+      
+      if (!process.env.JWT_SECRET) {
+        console.error('❌ JWT_SECRET is not defined in environment variables');
+        return res.status(500).json({ message: 'Server configuration error' });
+      }
+      
+      const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
+      res.cookie("token", token, {
+        httpOnly: false,
+        sameSite: 'lax',
+        maxAge: 24 * 60 * 60 * 1000
       });
+      
+      console.log('✅ Login successful for:', Email);
+      res
+        .status(200)
+        .json({
+          message: "Login successful",
+          user: { id: user._id, Email: user.Email, FullName: user.FullName },
+          token
+        });
+    } catch (dbError) {
+      console.error('❌ Database error during login:', dbError.message);
+      console.error('Database error details:', {
+        name: dbError.name,
+        message: dbError.message,
+        code: dbError.code
+      });
+      
+      // Check if this is a connection error
+      if (dbError.message.includes('buffering timed out') || dbError.message.includes('ENOTFOUND')) {
+        return res.status(503).json({ 
+          message: 'Database service temporarily unavailable. Please try again in a moment.',
+          error: 'Database connection error'
+        });
+      }
+      
+      throw dbError; // Re-throw to main catch block
+    }
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('❌ Login error:', error.message);
+    console.error('Error stack:', error.stack);
     res.status(500).json({ 
       message: 'Error during login',
       error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
